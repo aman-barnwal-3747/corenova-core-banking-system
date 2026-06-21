@@ -1,0 +1,27 @@
+{
+  "name": "corenova-bank-frontend",
+  "version": "1.0.0",
+  "description": "CoreNova Bank – Core Banking System Dashboard (Inspired by ICICI iCore/Finacle)",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev":     "vite",
+    "build":   "vite build",
+    "preview": "vite preview",
+    "lint":    "eslint src --ext .js,.jsx"
+  },
+  "dependencies": {
+    "react":             "^18.3.1",
+    "react-dom":         "^18.3.1",
+    "react-router-dom":  "^6.23.0",
+    "axios":             "^1.7.2",
+    "recharts":          "^2.12.7",
+    "lucide-react":      "^0.383.0",
+    "date-fns":          "^3.6.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.0",
+    "vite":                 "^5.2.11",
+    "eslint":               "^8.57.0"
+  }
+}

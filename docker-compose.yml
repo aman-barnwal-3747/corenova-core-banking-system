@@ -1,0 +1,151 @@
+# ================================================================
+#  docker-compose.yml – CoreNova Bank Full Stack
+#  PDF Phase 6: Docker & Deployment
+#
+#  Services:
+#   postgres : PostgreSQL 16 — primary CBS database
+#   redis    : Redis 7      — caching layer (accounts, dashboard, etc.)
+#   backend  : Spring Boot API (port 8080)
+#   frontend : React + Nginx (port 3000 → 80)
+#   pgadmin  : Optional DB admin UI (port 5050) — dev profile only
+#
+#  Quick start:
+#    cp .env.example .env          # fill in secrets
+#    docker compose up -d --build
+#    Frontend : http://localhost:3000
+#    Backend  : http://localhost:8080/api
+#    Swagger  : http://localhost:8080/api/swagger-ui.html
+#    pgAdmin  : http://localhost:5050  (profile: dev)
+#
+#  Stop:
+#    docker compose down            # keep data
+#    docker compose down -v         # remove volumes too
+# ================================================================
+
+version: "3.9"
+
+services:
+
+  # ──────────────────────────────────────────────────────────────
+  #  PostgreSQL – Primary Database
+  # ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: corenova-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${DB_NAME:-corenova_bank_db}
+      POSTGRES_USER:     ${DB_USERNAME:-corenova_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-Corenova@123
+    }
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-corenova_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - corenova-network
+
+  # ──────────────────────────────────────────────────────────────
+  #  Redis – Cache Layer (PDF §15 Advanced Features)
+  # ──────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: corenova-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - corenova-network
+
+  # ──────────────────────────────────────────────────────────────
+  #  Backend – Spring Boot API
+  # ──────────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: corenova-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # ── Datasource ──────────────────────────────────────────
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-corenova_bank_db}
+      SPRING_DATASOURCE_USERNAME: ${DB_USERNAME:-corenova_user}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-Corenova@123}
+      # ── Redis ───────────────────────────────────────────────
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      # ── JWT ─────────────────────────────────────────────────
+      APP_JWT_SECRET: ${JWT_SECRET:-CoreNovaBankSecretKey2025_ProductionKeyMustBeAtLeast256BitsLong!}
+      APP_JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-86400000}
+      # ── Profile ─────────────────────────────────────────────
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILE:-prod}
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    volumes:
+      - backend_logs:/app/logs
+    networks:
+      - corenova-network
+
+  # ──────────────────────────────────────────────────────────────
+  #  Frontend – React + Nginx
+  # ──────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: corenova-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    networks:
+      - corenova-network
+
+  # ──────────────────────────────────────────────────────────────
+  #  pgAdmin – Database Admin UI (optional, dev convenience)
+  #  Run with: docker compose --profile dev up -d
+  # ──────────────────────────────────────────────────────────────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: corenova-pgadmin
+    restart: unless-stopped
+    profiles: ["dev"]
+    environment:
+      PGADMIN_DEFAULT_EMAIL:    ${PGADMIN_EMAIL:-admin@corenova.bank}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    depends_on:
+      - postgres
+    networks:
+      - corenova-network
+
+# ── Named volumes (persist data across container restarts) ──────
+volumes:
+  postgres_data:
+  redis_data:
+  backend_logs:
+
+# ── Shared network ────────────────────────────────────────────────
+networks:
+  corenova-network:
+    driver: bridge

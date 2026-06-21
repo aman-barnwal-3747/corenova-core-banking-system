@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    ================================================================
+    logback-spring.xml – Structured Logging Configuration
+    PDF §15 Advanced Features: ELK Logging
+
+    Appenders:
+    1. CONSOLE      – Human-readable, colored output for local dev
+    2. FILE_JSON    – Structured JSON for Filebeat → Logstash → Elasticsearch
+    3. AUDIT_JSON   – Dedicated audit-trail JSON stream (separate index)
+
+    Log file location: ./logs/corenova-bank.json (rolled daily, 30-day retention)
+
+    ELK Pipeline:
+      Filebeat tails logs/*.json
+        → Logstash (parses JSON, adds @timestamp)
+        → Elasticsearch index: corenova-bank-YYYY.MM.dd
+        → Kibana dashboards (login failures, txn volume, error rates)
+
+    Profile-aware: 'dev' uses CONSOLE only; 'prod' adds JSON file appenders.
+    ================================================================
+-->
+<configuration>
+
+    <!-- ── Properties ─────────────────────────────────────────── -->
+    <property name="LOG_DIR"     value="./logs"/>
+    <property name="APP_NAME"    value="corenova-bank"/>
+    <property name="CONSOLE_PATTERN"
+              value="%cyan(%d{yyyy-MM-dd HH:mm:ss.SSS}) %highlight(%-5level) [%thread] %magenta(%logger{36}) - %msg%n%ex"/>
+
+    <!-- ════════════════════════════════════════════════════════
+         APPENDER 1: CONSOLE (human-readable, all profiles)
+         ════════════════════════════════════════════════════════ -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <pattern>${CONSOLE_PATTERN}</pattern>
+        </encoder>
+    </appender>
+
+    <!-- ════════════════════════════════════════════════════════
+         APPENDER 2: APPLICATION JSON (for Filebeat/Logstash)
+         Rolling policy: daily, max 30 days, max 1GB total
+         ════════════════════════════════════════════════════════ -->
+    <appender name="FILE_JSON" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/${APP_NAME}.json</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>
+                ${LOG_DIR}/archived/${APP_NAME}-%d{yyyy-MM-dd}.%i.json.gz
+            </fileNamePattern>
+
+            <maxFileSize>100MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>1GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <!-- Custom fields included in every JSON log line -->
+            <customFields>{"application":"${APP_NAME}","environment":"${SPRING_PROFILES_ACTIVE:-default}"}</customFields>
+            <!-- Include MDC fields (e.g. requestId, username) set by filters -->
+            <includeMdcKeyName>requestId</includeMdcKeyName>
+            <includeMdcKeyName>username</includeMdcKeyName>
+            <includeMdcKeyName>branchCode</includeMdcKeyName>
+            <fieldNames>
+                <timestamp>@timestamp</timestamp>
+                <message>message</message>
+                <logger>logger_name</logger>
+                <thread>thread_name</thread>
+                <level>level</level>
+                <levelValue>[ignore]</levelValue>
+            </fieldNames>
+        </encoder>
+    </appender>
+
+    <!-- ════════════════════════════════════════════════════════
+         APPENDER 3: AUDIT JSON (dedicated compliance stream)
+         Separate file/index for AuditLogService entries —
+         enables stricter retention policies (7 years per RBI).
+         ════════════════════════════════════════════════════════ -->
+    <appender name="AUDIT_JSON" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/${APP_NAME}-audit.json</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>
+                ${LOG_DIR}/archived/${APP_NAME}-audit-%d{yyyy-MM-dd}.%i.json.gz
+            </fileNamePattern>
+
+            <maxFileSize>100MB</maxFileSize>
+            <maxHistory>2555</maxHistory>
+            <totalSizeCap>10GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <customFields>{"application":"${APP_NAME}","log_type":"AUDIT_TRAIL"}</customFields>
+            <fieldNames>
+                <timestamp>@timestamp</timestamp>
+                <message>message</message>
+                <logger>logger_name</logger>
+                <level>[ignore]</level>
+                <levelValue>[ignore]</levelValue>
+                <thread>[ignore]</thread>
+            </fieldNames>
+        </encoder>
+    </appender>
+
+    <!-- Async wrapper improves throughput — never blocks app threads -->
+    <appender name="ASYNC_FILE_JSON" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="FILE_JSON"/>
+        <queueSize>1024</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <neverBlock>true</neverBlock>
+    </appender>
+
+    <!-- ════════════════════════════════════════════════════════
+         LOGGER CONFIGURATION
+         ════════════════════════════════════════════════════════ -->
+
+    <!-- Dedicated audit logger — used by AuditLogService -->
+    <logger name="com.corenova.bank.audit.AuditLogService" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="AUDIT_JSON"/>
+    </logger>
+
+    <!-- Application packages -->
+    <logger name="com.corenova.bank" level="DEBUG" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="ASYNC_FILE_JSON"/>
+    </logger>
+
+    <!-- Spring Security: INFO only (avoid leaking auth details at DEBUG) -->
+    <logger name="org.springframework.security" level="INFO"/>
+
+    <!-- Hibernate SQL: only at TRACE for deep debugging -->
+    <logger name="org.hibernate.SQL" level="WARN"/>
+
+    <!-- ── Root logger ────────────────────────────────────────── -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="ASYNC_FILE_JSON"/>
+    </root>
+
+    <!-- ════════════════════════════════════════════════════════
+         PROFILE OVERRIDES
+         dev  : console-only, verbose
+         prod : JSON files enabled (above), console kept for container logs
+         ════════════════════════════════════════════════════════ -->
+    <springProfile name="dev">
+        <logger name="com.corenova.bank" level="DEBUG"/>
+        <logger name="org.hibernate.SQL" level="DEBUG"/>
+    </springProfile>
+
+    <springProfile name="prod">
+        <logger name="com.corenova.bank" level="INFO"/>
+        <logger name="org.hibernate.SQL" level="ERROR"/>
+    </springProfile>
+
+</configuration>
