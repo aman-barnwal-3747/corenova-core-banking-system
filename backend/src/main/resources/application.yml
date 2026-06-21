@@ -10,9 +10,10 @@ spring:
 
   # ── PostgreSQL Database ─────────────────────────────────────
   datasource:
-    url: jdbc:postgresql://localhost:5432/corenova_bank
-    username: corenova_user
-    password: Corenova@123
+    datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
       pool-name: CoreNovaHikariPool
