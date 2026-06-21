@@ -11,7 +11,7 @@
 # ================================================================
 
 # ── Stage 1: Build ────────────────────────────────────────────
-FROM maven:3.9-eclipse-temurin-17 AS builder
+FROM maven:3.9-eclipse-temurin-21 AS builder
 
 WORKDIR /build
 
@@ -26,7 +26,7 @@ COPY src ./src
 RUN mvn clean package -DskipTests -B
 
 # ── Stage 2: Runtime ───────────────────────────────────────────
-FROM eclipse-temurin:17-jre-alpine AS runtime
+FROM eclipse-temurin:21-jre-alpine AS runtime
 
 # Run as non-root user (security best practice)
 RUN addgroup -S corenova && adduser -S corenova -G corenova
