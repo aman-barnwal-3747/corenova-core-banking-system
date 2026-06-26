@@ -10,10 +10,11 @@ spring:
 
   # ── PostgreSQL Database ─────────────────────────────────────
   datasource:
-    url: jdbc:postgresql://localhost:5432/corenova_bank
-    username: corenova_user
-    password: Corenova@123
+    url: jdbc:postgresql://ep-small-lab-aotlucce.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require
+    username: neondb_owner
+    password: npg_f9kn3eApoCiS
     driver-class-name: org.postgresql.Driver
+
     hikari:
       pool-name: CoreNovaHikariPool
       maximum-pool-size: 20
@@ -36,9 +37,11 @@ spring:
   # ── Redis Cache ────────────────────────────────────────────
   data:
     redis:
-      host: localhost
+      host: fresh-escargot-133045.upstash.io
       port: 6379
-      timeout: 60000
+      password: gQAAAAAAAge1AAIgcDJiN2UwMmI2NjUxNTE0NzJmOGIyNmZlZjA4MjExZWQwOA
+      ssl:
+        enabled: true
 
   # ── Cache Manager ──────────────────────────────────────────
   cache:
@@ -58,7 +61,7 @@ server:
 # ── JWT Configuration ─────────────────────────────────────────
 app:
   jwt:
-    secret: CoreNovaBankSecretKey2025_ProductionKeyMustBeAtLeast256BitsLong!
+    secret: CoreNovaBankSecretKey2026_ProductionKeyMustBeAtLeast256BitsLong!
     expiration-ms: 86400000        # 24 hours
     refresh-expiration-ms: 604800000  # 7 days
   bank:
